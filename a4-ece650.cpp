@@ -1,9 +1,11 @@
+#include "minisat/core/Solver.h"
+
 #include <iostream>
 #include <vector>
 #include <string.h>
 #include <bits/stdc++.h> 
 #include <regex>
-#include "minisat/core/Solver.h"
+
 
 using namespace std; 
 /*****************************************************
@@ -71,7 +73,7 @@ int parse_line(string line){
                 sub_edge.src=vertices[0];
                 sub_edge.dst=vertices[1];
                 edge_obj.push_back(sub_edge);
-                cout << "<" << edge_obj[edge_obj.size()-1].src << "," << edge_obj[edge_obj.size()-1].dst << ">" << endl;
+                //cout << "<" << edge_obj[edge_obj.size()-1].src << "," << edge_obj[edge_obj.size()-1].dst << ">" << endl;
             }             
         } catch (...) {
             // Syntax error in the regular expression
@@ -86,7 +88,7 @@ int parse_line(string line){
     return error;
 
 }
-
+/*
 int reduction(int vertex, vector<edge_t> edge){
 	unsigned int i,j,p,q;
 	unsigned int n=vertex;
@@ -99,12 +101,13 @@ int reduction(int vertex, vector<edge_t> edge){
 	}
 	cout << endl;
 
+
     //loop k from 1 to n to find the minimal vertex cover
 	for(k=1;k<=n;k++){
 		delete [] x;
 		x=new int[n*k];
 		for (i=0;i<n*k;i++){
-			x[i]=(int)i+1;
+			x[i]=(int)i;
 			//cout << x[i];
 		}
 		cout << endl;
@@ -155,38 +158,97 @@ int reduction(int vertex, vector<edge_t> edge){
 
     return 0;
 }
+*/
+int bool_reduction(int vertex, vector<edge_t> edge){
+    unsigned int i,j,p,q;
+    unsigned int n=vertex;
+    unsigned int k;
+    Minisat::Var *x=NULL;
+    //unsigned int no_of_clauses;
+
+    /*
+    for(i=0;i<edge.size();i++){
+        cout << "<" << edge[i].src << "," << edge[i].dst << ">";
+    }
+    cout << endl;
+    */
+
+    Minisat::vec<Minisat::Lit> literals;
+    vector<int> MiniVC;
+
+    //loop k from 1 to n to find the minimal vertex cover
+    for(k=1;k<=n;k++){
+        Minisat::Solver solver;
+        delete [] x;
+        x=new Minisat::Var[n*k];
+        for (i=0;i<n*k;i++){
+            x[i]=solver.newVar();
+        }
+        //no_of_clauses=k+edge.size()+n*k*(n+k-2)/2;
+        //cout << "p cnf " << n*k << " " << no_of_clauses << endl;
+        //first set of clauses
+        literals.clear();
+        for (j=0;j<k;j++){
+            for (i=0;i<n;i++){
+                literals.push(Minisat::mkLit(x[i+j*n]));
+            }
+            solver.addClause(literals);
+            literals.clear();
+        }
+        //second set of clauses
+        for (i=0;i<n;i++){
+            for (p=0;p<k;p++){
+                for (q=p+1;q<k;q++){
+                    solver.addClause(~Minisat::mkLit(x[i+p*n]),~Minisat::mkLit(x[i+q*n]));
+                }
+            }
+        }
+        //third set of clauses
+        for (j=0;j<k;j++){
+            for (p=0;p<n;p++){
+                for (q=p+1;q<n;q++){
+                    solver.addClause(~Minisat::mkLit(x[p+j*n]),~Minisat::mkLit(x[q+j*n]));
+                }
+            }
+        }
+        //fourth set of clauses
+        literals.clear();
+        for (p=0;p<edge_obj.size();p++){
+            for (q=0;q<k;q++){
+                literals.push(Minisat::mkLit(x[edge_obj[p].src+q*n]));
+                literals.push(Minisat::mkLit(x[edge_obj[p].dst+q*n]));
+            }
+            solver.addClause(literals);
+            literals.clear();
+        }
+        //Check result
+        auto sat = solver.solve();
+        if (sat) {
+            MiniVC.clear();
+            for (i=0;i<n*k;i++){
+                if(solver.modelValue(x[i]) == Minisat::l_True){
+                    MiniVC.push_back(i%n);
+                }
+            }
+            sort(MiniVC.begin(),MiniVC.end());
+            for (auto vc : MiniVC) 
+                 cout << vc << " "; 
+            cout << endl;
+            return 0;
+        }
+    }
+
+    std::cout << "Error: Invalid graph, no vertex cover exist" << endl;
+    return 0;
+}
+
 
 int main(){
 	string line;
 	int error=NO_ERROR;
 
-	using Minisat::mkLit;
+    using Minisat::mkLit;
     using Minisat::lbool;
-
-    Minisat::Solver solver;
-    // Create variables
-    auto A = solver.newVar();
-    auto B = solver.newVar();
-    auto C = solver.newVar();
-    
-    // Create the clauses
-    solver.addClause( mkLit(A),  mkLit(B),  mkLit(C));
-    solver.addClause(~mkLit(A),  mkLit(B),  mkLit(C));
-    solver.addClause( mkLit(A), ~mkLit(B),  mkLit(C));
-    solver.addClause( mkLit(A),  mkLit(B), ~mkLit(C));
-    
-    // Check for solution and retrieve model if found
-    auto sat = solver.solve();
-    if (sat) {
-        std::clog << "SAT\n"
-                  << "Model found:\n";
-        std::clog << "A := " << (solver.modelValue(A) == l_True) << '\n';
-        std::clog << "B := " << (solver.modelValue(B) == l_True) << '\n';
-        std::clog << "C := " << (solver.modelValue(C) == l_True) << '\n';
-    } else {
-        std::clog << "UNSAT\n";
-        return 1;
-    }
 
 	while(1){
 	    try{
@@ -196,13 +258,10 @@ int main(){
                  break;             
             }
             error = parse_line(line);
-            if (error == NO_ERROR){
-        	    cout << "Error: Parse Successful" << endl;
-            }else if (error == INVALID_INPUT){
+            if (error == INVALID_INPUT){
         	    cout << "Error: Invalid Command" << endl;
             }else if (error == INPUT_DONE){
-        	    cout << "Error: Input Done, Do Vertex Cover" << endl;
-        	    reduction(v, edge_obj);
+        	    bool_reduction(v, edge_obj);
             }
 	    }catch(...){
 	    	cout << "Error: unexpected error" << endl;
